@@ -501,11 +501,19 @@ function applyPosition(layer, time1, time2, layerIndex) {
         var originalZ = (zProp) ? zProp.valueAtTime(time2, false) : 0;
 
         var deltaX = 0, deltaY = 0, deltaZ = 0;
-        calculatePositionDelta(layerIndex, is3DLayer, function (dx, dy, dz) {
-            deltaX = (dx || 0) * signX;
-            deltaY = (dy || 0) * signY;
-            deltaZ = (dz || 0) * signZ;
+        var alreadySigned = false;
+        calculatePositionDelta(layerIndex, is3DLayer, function (dx, dy, dz, signed) {
+            alreadySigned = !!signed;
+            deltaX = (dx || 0);
+            deltaY = (dy || 0);
+            deltaZ = (dz || 0);
         });
+
+        if (!alreadySigned) {
+            deltaX *= signX;
+            deltaY *= signY;
+            deltaZ *= signZ;
+        }
 
         xProp.setValueAtTime(time1, originalX + deltaX);
         xProp.setValueAtTime(time2, originalX);
@@ -523,11 +531,19 @@ function applyPosition(layer, time1, time2, layerIndex) {
         var hasZ = is3DLayer && (original instanceof Array) && (original.length >= 3);
 
         var deltaX2 = 0, deltaY2 = 0, deltaZ2 = 0;
-        calculatePositionDelta(layerIndex, is3DLayer, function (dx, dy, dz) {
-            deltaX2 = (dx || 0) * signX;
-            deltaY2 = (dy || 0) * signY;
-            deltaZ2 = (dz || 0) * signZ;
+        var alreadySigned2 = false;
+        calculatePositionDelta(layerIndex, is3DLayer, function (dx, dy, dz, signed) {
+            alreadySigned2 = !!signed;
+            deltaX2 = (dx || 0);
+            deltaY2 = (dy || 0);
+            deltaZ2 = (dz || 0);
         });
+
+        if (!alreadySigned2) {
+            deltaX2 *= signX;
+            deltaY2 *= signY;
+            deltaZ2 *= signZ;
+        }
 
         var newVal;
         if (hasZ) {
@@ -645,6 +661,9 @@ function applyPosition(layer, time1, time2, layerIndex) {
         
     // 方向（符号）はここでは決めない版
     function calculatePositionDelta(layerIndex, is3DLayer, callback) {
+        var mode = (settings.posMode | 0);
+        var useSignedRange = (mode === 5);
+
         // 入力レンジを絶対値レンジに正規化（負の設定でも大きさとして解釈）
         var axMin = Math.min(Math.abs(settings.xMin || 0), Math.abs(settings.xMax || 0));
         var axMax = Math.max(Math.abs(settings.xMin || 0), Math.abs(settings.xMax || 0));
@@ -655,17 +674,34 @@ function applyPosition(layer, time1, time2, layerIndex) {
         var azMin = Math.min(Math.abs(settings.zMin || 0), Math.abs(settings.zMax || 0));
         var azMax = Math.max(Math.abs(settings.zMin || 0), Math.abs(settings.zMax || 0));
 
-        // 3DかつZレンジが有効なときだけ使う
-        var canZ = !!is3DLayer && ((azMin !== 0) || (azMax !== 0));
+        // 生の範囲（signed range）も保持
+        var rxMin = Number(settings.xMin) || 0;
+        var rxMax = Number(settings.xMax) || 0;
+        if (rxMin > rxMax) { var tmpX = rxMin; rxMin = rxMax; rxMax = tmpX; }
+
+        var ryMin = Number(settings.yMin) || 0;
+        var ryMax = Number(settings.yMax) || 0;
+        if (ryMin > ryMax) { var tmpY = ryMin; ryMin = ryMax; ryMax = tmpY; }
+
+        var rzMin = Number(settings.zMin) || 0;
+        var rzMax = Number(settings.zMax) || 0;
+        if (rzMin > rzMax) { var tmpZ = rzMin; rzMin = rzMax; rzMax = tmpZ; }
+
+        // 3Dかつレンジが有効なときだけZを使用
+        var canZ = !!is3DLayer && ((azMin !== 0) || (azMax !== 0) || (useSignedRange && (rzMin !== 0 || rzMax !== 0)));
 
         function randAbs(minV, maxV) {
             var v = randomRange(minV, maxV);
             return Math.abs(v);
         }
 
+        function randSigned(minV, maxV) {
+            return randomRange(minV, maxV);
+        }
+
         var dx = 0, dy = 0, dz = 0;
 
-        switch ((settings.posMode | 0)) {
+        switch (mode) {
 
             case 2: // X/Y/Z（どれか一方）※2DならX/Yのみ
                 if (canZ) {
@@ -696,6 +732,12 @@ function applyPosition(layer, time1, time2, layerIndex) {
                 }
                 break;
 
+            case 5: // ▼追加：範囲（min～max の間で生値をランダムに選択）
+                dx = randSigned(rxMin, rxMax);
+                dy = randSigned(ryMin, ryMax);
+                if (canZ) dz = randSigned(rzMin, rzMax);
+                break;
+
             // 0:拡散, 1:座標（ここは従来どおり「複数軸」扱い。3DならZも）
             default:
                 dx = randAbs(axMin, axMax);
@@ -704,7 +746,7 @@ function applyPosition(layer, time1, time2, layerIndex) {
                 break;
         }
 
-        if (typeof callback === "function") callback(dx, dy, dz);
+        if (typeof callback === "function") callback(dx, dy, dz, useSignedRange);
     }
 
     // ========================================
@@ -743,7 +785,8 @@ function applyPosition(layer, time1, time2, layerIndex) {
             "座標：X/Y（3DならZも）を同時に動かします（現実装は拡散と同等）。",
             "X/Y/Z：1軸だけ動かします（2DはX/Y）。",
             "↑→↓←：2D想定でXかYのみ（Zは動かしません）。",
-            "X→Y→Z：レイヤー順で軸を分配（2DはX→Y）。"
+            "X→Y→Z：レイヤー順で軸を分配（2DはX→Y）。",
+            "範囲：min～max の間でランダムに分布（例：-100～100なら中間値も出ます）。"
         ];
         if (ui.rbPos && ui.rbPos.length) {
             for (var j = 0; j < ui.rbPos.length && j < posHelps.length; j++) {
@@ -874,8 +917,8 @@ function applyPosition(layer, time1, time2, layerIndex) {
         posGroup.add("statictext", undefined, "分布:");
         var posRadios = [];
 
-        // 既存 0..3 を維持し、4 を追加
-        var posLabels = ["拡散", "座標", "X/Y/Z", "↑→↓←", "X→Y→Z"];
+        // 既存 0..3 を維持し、4,5 を追加
+        var posLabels = ["拡散", "座標", "X/Y/Z", "↑→↓←", "X→Y→Z", "範囲"];
         for (var j=0; j<posLabels.length; j++){
             var rb2 = posGroup.add("radiobutton", undefined, posLabels[j]);
             posRadios.push(rb2);
