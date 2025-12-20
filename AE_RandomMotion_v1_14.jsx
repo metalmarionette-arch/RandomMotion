@@ -1142,21 +1142,10 @@ function applyPosition(layer, time1, time2, layerIndex) {
             }
         };
 
-        // キー操作：Delete=削除、Enter=適用（※閉じない）
+        // キー操作：Enter=適用（※閉じない）
         list.addEventListener("keydown", function (e) {
-            if (e.keyName === "Delete" && list.selection) {
-                removePreset(list.selection.index);
-                updatePresetList(list);
-            } else if (e.keyName === "Enter" && list.selection) {
+            if (e.keyName === "Enter" && list.selection) {
                 applyPreset(list.selection.index); // ← win.close() しない
-            }
-        });
-
-        // 右クリックで削除
-        list.addEventListener("mousedown", function (e) {
-            if (e.button === 2 && list.selection) {
-                removePreset(list.selection.index);
-                updatePresetList(list);
             }
         });
 
@@ -1174,6 +1163,7 @@ function applyPosition(layer, time1, time2, layerIndex) {
         var nameText = btnGroup.add("edittext", undefined, "");
         nameText.characters = 15;
         var btnSave = btnGroup.add("button", undefined, "Save");
+        var btnDelete = btnGroup.add("button", undefined, "削除");
         var btnImport = btnGroup.add("button", undefined, "Import");
         var btnExport = btnGroup.add("button", undefined, "Export");
 
@@ -1201,6 +1191,14 @@ function applyPosition(layer, time1, time2, layerIndex) {
             addPreset(name, values);
             updatePresetList(list);
             nameText.text = "";
+        };
+
+        // 削除
+        btnDelete.onClick = function () {
+            if (list.selection) {
+                removePreset(list.selection.index);
+                updatePresetList(list);
+            }
         };
 
         // インポート／エクスポート
