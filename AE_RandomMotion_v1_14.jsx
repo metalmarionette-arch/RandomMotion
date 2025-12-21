@@ -16,19 +16,19 @@
     // デフォルト値
     // ★DEFAULT_VALUES を以下に置き換え
     var DEFAULT_VALUES = {
-        // 位置
+        // 位置（T）
         xMin: 0, xMax: 0,
         yMin: 0, yMax: 0,
         zMin: 0, zMax: 0,
-        orderX: 0, orderY: 0, orderZ: 0,
+        orderX: 0, orderY: 0, orderZ: 0, // 0:ランダム, 1:-+-+, 2:+-+-
 
-        // 回転（3軸想定）
+        // 回転（3軸想定 R）
         rXMin: 0, rXMax: 0,
         rYMin: 0, rYMax: 0,
         rZMin: 0, rZMax: 0,
         orderRX: 0, orderRY: 0, orderRZ: 0,
 
-        // 拡縮（3軸想定）
+        // 拡縮（3軸想定 S）
         sXMin: 0, sXMax: 0,
         sYMin: 0, sYMax: 0,
         sZMin: 0, sZMax: 0,
@@ -384,6 +384,11 @@
     
     // 値生成：min/max と順番から符号を決める
     function sampleValueWithOrder(minVal, maxVal, orderMode, index) {
+        // orderMode: 0=ランダム, 1=-+-+ (min→max…), 2=+-+- (max→min…)
+        if ((orderMode | 0) === 0) {
+            return randomRange(minVal || 0, maxVal || 0);
+        }
+
         var base = randomRange(minVal || 0, maxVal || 0);
         var magnitude = Math.abs(base);
 
@@ -638,6 +643,15 @@ function applyPosition(layer, time1, time2, layerIndex) {
         function valX() { return sampleValueWithOrder(settings.xMin, settings.xMax, settings.orderX, layerIndex); }
         function valY() { return sampleValueWithOrder(settings.yMin, settings.yMax, settings.orderY, layerIndex); }
         function valZ() { return sampleValueWithOrder(settings.zMin, settings.zMax, settings.orderZ, layerIndex); }
+        function pickExtreme(minV, maxV, orderMode) {
+            var useMinFirst = (orderMode | 0) === 1;
+            var useMaxFirst = (orderMode | 0) === 2;
+            var chooseMin;
+            if (useMinFirst) chooseMin = (layerIndex % 2 === 0);
+            else if (useMaxFirst) chooseMin = (layerIndex % 2 !== 0);
+            else chooseMin = (Math.random() < 0.5);
+            return chooseMin ? minV : maxV;
+        }
 
         var dx = 0, dy = 0, dz = 0;
 
@@ -671,6 +685,12 @@ function applyPosition(layer, time1, time2, layerIndex) {
                 }
                 break;
 
+            case 1: // 座標：極値のみ
+                dx = pickExtreme(settings.xMin, settings.xMax, settings.orderX);
+                dy = pickExtreme(settings.yMin, settings.yMax, settings.orderY);
+                if (canZ) dz = pickExtreme(settings.zMin, settings.zMax, settings.orderZ);
+                break;
+
             // 0:拡散, 1:座標（どちらも min～max の範囲ランダム）
             default:
                 dx = valX();
@@ -689,6 +709,15 @@ function applyPosition(layer, time1, time2, layerIndex) {
         function valSX() { return sampleValueWithOrder(settings.sXMin, settings.sXMax, settings.orderSX, layerIndex); }
         function valSY() { return sampleValueWithOrder(settings.sYMin, settings.sYMax, settings.orderSY, layerIndex); }
         function valSZ() { return sampleValueWithOrder(settings.sZMin, settings.sZMax, settings.orderSZ, layerIndex); }
+        function pickExtreme(minV, maxV, orderMode) {
+            var useMinFirst = (orderMode | 0) === 1;
+            var useMaxFirst = (orderMode | 0) === 2;
+            var chooseMin;
+            if (useMinFirst) chooseMin = (layerIndex % 2 === 0);
+            else if (useMaxFirst) chooseMin = (layerIndex % 2 !== 0);
+            else chooseMin = (Math.random() < 0.5);
+            return chooseMin ? minV : maxV;
+        }
 
         var dx = 0, dy = 0, dz = 0;
 
@@ -720,6 +749,12 @@ function applyPosition(layer, time1, time2, layerIndex) {
                     if ((layerIndex % 2) === 0) dx = valSX();
                     else                        dy = valSY();
                 }
+                break;
+
+            case 1: // 座標：極値のみ
+                dx = pickExtreme(settings.sXMin, settings.sXMax, settings.orderSX);
+                dy = pickExtreme(settings.sYMin, settings.sYMax, settings.orderSY);
+                if (canZ) dz = pickExtreme(settings.sZMin, settings.sZMax, settings.orderSZ);
                 break;
 
             default: // 拡散/座標
@@ -758,24 +793,24 @@ function applyPosition(layer, time1, time2, layerIndex) {
             if (row.orderDD && row.updateOrderHelp) row.updateOrderHelp();
         }
 
-        setRowHelp(ui.posRows.x, "位置X", "。分布設定に従い min～max の間で動きます。", false);
-        setRowHelp(ui.posRows.y, "位置Y", "。分布設定に従い min～max の間で動きます。", false);
-        setRowHelp(ui.posRows.z, "位置Z", "（3Dレイヤーのみ有効）。分布設定に従い min～max の間で動きます。", false);
+        setRowHelp(ui.posRows.x, "T X", "。分布設定に従い min～max の間で動きます。", false);
+        setRowHelp(ui.posRows.y, "T Y", "。分布設定に従い min～max の間で動きます。", false);
+        setRowHelp(ui.posRows.z, "T Z", "（3Dレイヤーのみ有効）。分布設定に従い min～max の間で動きます。", false);
 
-        setRowHelp(ui.rotRows.x, "回転X", "（度）。", false);
-        setRowHelp(ui.rotRows.y, "回転Y", "（度）。", false);
-        setRowHelp(ui.rotRows.z, "回転Z", "（度）。2Dレイヤーでは Z のみ反映。", false);
+        setRowHelp(ui.rotRows.x, "R X", "（度）。", false);
+        setRowHelp(ui.rotRows.y, "R Y", "（度）。", false);
+        setRowHelp(ui.rotRows.z, "R Z", "（度）。2Dレイヤーでは Z のみ反映。", false);
 
-        setRowHelp(ui.scaleRows.x, "拡縮X", "。0 を跨ぐ場合は 0 で停止します。", false);
-        setRowHelp(ui.scaleRows.y, "拡縮Y", "。0 を跨ぐ場合は 0 で停止します。", false);
-        setRowHelp(ui.scaleRows.z, "拡縮Z", "。3Dスケールのみ有効。0 を跨ぐ場合は 0 で停止します。", false);
+        setRowHelp(ui.scaleRows.x, "S X", "。0 を跨ぐ場合は 0 で停止します。", false);
+        setRowHelp(ui.scaleRows.y, "S Y", "。0 を跨ぐ場合は 0 で停止します。", false);
+        setRowHelp(ui.scaleRows.z, "S Z", "。3Dスケールのみ有効。0 を跨ぐ場合は 0 で停止します。", false);
 
         setRowHelp(ui.opacityRow, "透明度", "。現在値から差し引く量を指定します。", true);
 
         // 位置モード（▼追加モード込み）
         var posHelps = [
             "拡散：X/Y（3DならZも）を同時に動かします。min～max の範囲からランダムに値を選びます。",
-            "座標：X/Y（3DならZも）を同時に動かします（現実装は拡散と同等）。",
+            "座標：X/Y（3DならZも）を同時に動かします。min または max のどちらかのみを使います（中間値なし）。",
             "X/Y/Z：1軸だけ動かします（2DはX/Y）。",
             "↑→↓←：2D想定でXかYのみ（Zは動かしません）。",
             "X→Y→Z：レイヤー順で軸を分配（2DはX→Y）。"
@@ -819,7 +854,7 @@ function applyPosition(layer, time1, time2, layerIndex) {
         motionGroup.spacing = 5;
         motionGroup.margins = 10;
 
-        var orderLabels = ["min → max → min → max", "max → min → max → min"];
+        var orderLabels = ["―", "-+-+", "+-+-"];
 
         function createValueRow(parent, label, minKey, maxKey, orderKey, sliderMin, sliderMax) {
             var row = parent.add("group");
@@ -829,34 +864,35 @@ function applyPosition(layer, time1, time2, layerIndex) {
             var lbl = row.add("statictext", undefined, label + "：");
             lbl.characters = 4;
 
-            var orderGroup = row.add("group");
-            orderGroup.orientation = "row";
-            orderGroup.alignment = ["left", "top"];
-            orderGroup.add("statictext", undefined, "順番:");
-            var orderDD = orderGroup.add("dropdownlist", undefined, orderLabels);
-            orderDD.selection = (settings[orderKey] | 0) || 0;
+            var orderDD = row.add("dropdownlist", undefined, orderLabels);
+            orderDD.selection = orderDD.items[Math.min(Math.max(settings[orderKey] | 0, 0), orderLabels.length - 1)];
 
             var minGroup = row.add("group");
             minGroup.add("statictext", undefined, "min:");
             var minText = minGroup.add("edittext", undefined, String(settings[minKey] || 0));
             minText.characters = 6;
             var minSlider = minGroup.add("slider", undefined, settings[minKey] || 0, sliderMin, sliderMax);
-            minSlider.preferredSize.width = 90;
+            minSlider.preferredSize.width = 180;
 
             var maxGroup = row.add("group");
             maxGroup.add("statictext", undefined, "max:");
             var maxText = maxGroup.add("edittext", undefined, String(settings[maxKey] || 0));
             maxText.characters = 6;
             var maxSlider = maxGroup.add("slider", undefined, settings[maxKey] || 0, sliderMin, sliderMax);
-            maxSlider.preferredSize.width = 90;
+            maxSlider.preferredSize.width = 180;
 
             function updateOrderHelp() {
-                var isMinStart = !orderDD.selection || orderDD.selection.index === 0;
-                var orderText = isMinStart ? "min → max → min → max" : "max → min → max → min";
-                var evenDesc = isMinStart ? "偶数= min の符号" : "偶数= max の符号";
-                var oddDesc  = isMinStart ? "奇数= max の符号" : "奇数= min の符号";
-                orderDD.helpTip = label + " の順番: " + orderText +
-                    "（" + evenDesc + " / " + oddDesc + "）。現在: min=" + settings[minKey] + ", max=" + settings[maxKey] + "。";
+                var sel = orderDD.selection ? orderDD.selection.index : 0;
+                var orderText;
+                if (sel === 0) {
+                    orderText = "ランダム（順番指定なし）";
+                } else if (sel === 1) {
+                    orderText = "-+-+（偶数: min 符号 / 奇数: max 符号）";
+                } else {
+                    orderText = "+-+-（偶数: max 符号 / 奇数: min 符号）";
+                }
+                orderDD.helpTip = label + " の適用順序: " + orderText +
+                    "。現在: min=" + settings[minKey] + ", max=" + settings[maxKey] + "。";
             }
 
             minSlider.onChanging = function () {
@@ -906,20 +942,20 @@ function applyPosition(layer, time1, time2, layerIndex) {
         rowsContainer.alignChildren = ["fill", "top"];
         rowsContainer.spacing = 4;
 
-        // 位置
-        var rowPosX = createValueRow(rowsContainer, "位置X", "xMin", "xMax", "orderX", -2000, 2000);
-        var rowPosY = createValueRow(rowsContainer, "位置Y", "yMin", "yMax", "orderY", -2000, 2000);
-        var rowPosZ = createValueRow(rowsContainer, "位置Z", "zMin", "zMax", "orderZ", -2000, 2000);
+        // 位置（T）
+        var rowPosX = createValueRow(rowsContainer, "T X", "xMin", "xMax", "orderX", -2000, 2000);
+        var rowPosY = createValueRow(rowsContainer, "T Y", "yMin", "yMax", "orderY", -2000, 2000);
+        var rowPosZ = createValueRow(rowsContainer, "T Z", "zMin", "zMax", "orderZ", -2000, 2000);
 
-        // 回転
-        var rowRotX = createValueRow(rowsContainer, "回転X", "rXMin", "rXMax", "orderRX", -180, 180);
-        var rowRotY = createValueRow(rowsContainer, "回転Y", "rYMin", "rYMax", "orderRY", -180, 180);
-        var rowRotZ = createValueRow(rowsContainer, "回転Z", "rZMin", "rZMax", "orderRZ", -180, 180);
+        // 回転（R）
+        var rowRotX = createValueRow(rowsContainer, "R X", "rXMin", "rXMax", "orderRX", -180, 180);
+        var rowRotY = createValueRow(rowsContainer, "R Y", "rYMin", "rYMax", "orderRY", -180, 180);
+        var rowRotZ = createValueRow(rowsContainer, "R Z", "rZMin", "rZMax", "orderRZ", -180, 180);
 
-        // 拡縮
-        var rowScaleX = createValueRow(rowsContainer, "拡縮X", "sXMin", "sXMax", "orderSX", -400, 400);
-        var rowScaleY = createValueRow(rowsContainer, "拡縮Y", "sYMin", "sYMax", "orderSY", -400, 400);
-        var rowScaleZ = createValueRow(rowsContainer, "拡縮Z", "sZMin", "sZMax", "orderSZ", -400, 400);
+        // 拡縮（S）
+        var rowScaleX = createValueRow(rowsContainer, "S X", "sXMin", "sXMax", "orderSX", -400, 400);
+        var rowScaleY = createValueRow(rowsContainer, "S Y", "sYMin", "sYMax", "orderSY", -400, 400);
+        var rowScaleZ = createValueRow(rowsContainer, "S Z", "sZMin", "sZMax", "orderSZ", -400, 400);
 
         // 不透明度
         var rowOpacity = createValueRow(rowsContainer, "透明度", "tMin", "tMax", "orderT", 0, 100);
