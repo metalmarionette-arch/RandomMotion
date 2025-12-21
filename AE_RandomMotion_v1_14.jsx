@@ -403,6 +403,20 @@
         return magnitude * sign;
     }
 
+    function pickExtremeWithOrder(minVal, maxVal, orderMode, index) {
+        var useMinFirst = (orderMode | 0) === 1;
+        var useMaxFirst = (orderMode | 0) === 2;
+        var chooseMin;
+        if (useMinFirst) {
+            chooseMin = (index % 2 === 0);
+        } else if (useMaxFirst) {
+            chooseMin = (index % 2 !== 0);
+        } else {
+            chooseMin = (Math.random() < 0.5);
+        }
+        return chooseMin ? minVal : maxVal;
+    }
+
     
     // ========================================
     // キーフレーム生成
@@ -628,7 +642,14 @@ function applyPosition(layer, time1, time2, layerIndex) {
 
         var opacity = layer.property("ADBE Transform Group").property("ADBE Opacity");
         var original = opacity.valueAtTime(time2, false);
-        var delta = sampleValueWithOrder(settings.tMin, settings.tMax, settings.orderT, layerIndex);
+
+        var mode = (settings.posMode | 0);
+        var delta;
+        if (mode === 1) { // 座標: min/maxのみ
+            delta = pickExtremeWithOrder(settings.tMin, settings.tMax, settings.orderT, layerIndex);
+        } else { // 拡散やその他のモード
+            delta = sampleValueWithOrder(settings.tMin, settings.tMax, settings.orderT, layerIndex);
+        }
 
         var newValue = clamp(original - delta, 0, 100);
         opacity.setValueAtTime(time1, newValue);
@@ -643,15 +664,6 @@ function applyPosition(layer, time1, time2, layerIndex) {
         function valX() { return sampleValueWithOrder(settings.xMin, settings.xMax, settings.orderX, layerIndex); }
         function valY() { return sampleValueWithOrder(settings.yMin, settings.yMax, settings.orderY, layerIndex); }
         function valZ() { return sampleValueWithOrder(settings.zMin, settings.zMax, settings.orderZ, layerIndex); }
-        function pickExtreme(minV, maxV, orderMode) {
-            var useMinFirst = (orderMode | 0) === 1;
-            var useMaxFirst = (orderMode | 0) === 2;
-            var chooseMin;
-            if (useMinFirst) chooseMin = (layerIndex % 2 === 0);
-            else if (useMaxFirst) chooseMin = (layerIndex % 2 !== 0);
-            else chooseMin = (Math.random() < 0.5);
-            return chooseMin ? minV : maxV;
-        }
 
         var dx = 0, dy = 0, dz = 0;
 
@@ -686,9 +698,9 @@ function applyPosition(layer, time1, time2, layerIndex) {
                 break;
 
             case 1: // 座標：極値のみ
-                dx = pickExtreme(settings.xMin, settings.xMax, settings.orderX);
-                dy = pickExtreme(settings.yMin, settings.yMax, settings.orderY);
-                if (canZ) dz = pickExtreme(settings.zMin, settings.zMax, settings.orderZ);
+                dx = pickExtremeWithOrder(settings.xMin, settings.xMax, settings.orderX, layerIndex);
+                dy = pickExtremeWithOrder(settings.yMin, settings.yMax, settings.orderY, layerIndex);
+                if (canZ) dz = pickExtremeWithOrder(settings.zMin, settings.zMax, settings.orderZ, layerIndex);
                 break;
 
             // 0:拡散, 1:座標（どちらも min～max の範囲ランダム）
@@ -709,15 +721,6 @@ function applyPosition(layer, time1, time2, layerIndex) {
         function valSX() { return sampleValueWithOrder(settings.sXMin, settings.sXMax, settings.orderSX, layerIndex); }
         function valSY() { return sampleValueWithOrder(settings.sYMin, settings.sYMax, settings.orderSY, layerIndex); }
         function valSZ() { return sampleValueWithOrder(settings.sZMin, settings.sZMax, settings.orderSZ, layerIndex); }
-        function pickExtreme(minV, maxV, orderMode) {
-            var useMinFirst = (orderMode | 0) === 1;
-            var useMaxFirst = (orderMode | 0) === 2;
-            var chooseMin;
-            if (useMinFirst) chooseMin = (layerIndex % 2 === 0);
-            else if (useMaxFirst) chooseMin = (layerIndex % 2 !== 0);
-            else chooseMin = (Math.random() < 0.5);
-            return chooseMin ? minV : maxV;
-        }
 
         var dx = 0, dy = 0, dz = 0;
 
@@ -752,9 +755,9 @@ function applyPosition(layer, time1, time2, layerIndex) {
                 break;
 
             case 1: // 座標：極値のみ
-                dx = pickExtreme(settings.sXMin, settings.sXMax, settings.orderSX);
-                dy = pickExtreme(settings.sYMin, settings.sYMax, settings.orderSY);
-                if (canZ) dz = pickExtreme(settings.sZMin, settings.sZMax, settings.orderSZ);
+                dx = pickExtremeWithOrder(settings.sXMin, settings.sXMax, settings.orderSX, layerIndex);
+                dy = pickExtremeWithOrder(settings.sYMin, settings.sYMax, settings.orderSY, layerIndex);
+                if (canZ) dz = pickExtremeWithOrder(settings.sZMin, settings.sZMax, settings.orderSZ, layerIndex);
                 break;
 
             default: // 拡散/座標
