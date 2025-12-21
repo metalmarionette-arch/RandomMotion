@@ -929,14 +929,14 @@ function applyPosition(layer, time1, time2, layerIndex) {
             };
 
             minReset.onClick = function () {
-                settings[minKey] = sliderMin;
+                settings[minKey] = 0;
                 minText.text = settings[minKey];
                 minSlider.value = settings[minKey];
                 updateOrderHelp();
             };
 
             maxReset.onClick = function () {
-                settings[maxKey] = sliderMax;
+                settings[maxKey] = 0;
                 maxText.text = settings[maxKey];
                 maxSlider.value = settings[maxKey];
                 updateOrderHelp();
