@@ -873,6 +873,8 @@ function applyPosition(layer, time1, time2, layerIndex) {
             minText.characters = 6;
             var minSlider = minGroup.add("slider", undefined, settings[minKey] || 0, sliderMin, sliderMax);
             minSlider.preferredSize.width = 180;
+            var minReset = minGroup.add("button", undefined, "Reset");
+            minReset.preferredSize.width = 50;
 
             var maxGroup = row.add("group");
             maxGroup.add("statictext", undefined, "max:");
@@ -880,6 +882,8 @@ function applyPosition(layer, time1, time2, layerIndex) {
             maxText.characters = 6;
             var maxSlider = maxGroup.add("slider", undefined, settings[maxKey] || 0, sliderMin, sliderMax);
             maxSlider.preferredSize.width = 180;
+            var maxReset = maxGroup.add("button", undefined, "Reset");
+            maxReset.preferredSize.width = 50;
 
             function updateOrderHelp() {
                 var sel = orderDD.selection ? orderDD.selection.index : 0;
@@ -924,6 +928,20 @@ function applyPosition(layer, time1, time2, layerIndex) {
                 updateOrderHelp();
             };
 
+            minReset.onClick = function () {
+                settings[minKey] = sliderMin;
+                minText.text = settings[minKey];
+                minSlider.value = settings[minKey];
+                updateOrderHelp();
+            };
+
+            maxReset.onClick = function () {
+                settings[maxKey] = sliderMax;
+                maxText.text = settings[maxKey];
+                maxSlider.value = settings[maxKey];
+                updateOrderHelp();
+            };
+
             updateOrderHelp();
 
             return {
@@ -932,6 +950,8 @@ function applyPosition(layer, time1, time2, layerIndex) {
                 maxText: maxText,
                 minSlider: minSlider,
                 maxSlider: maxSlider,
+                minReset: minReset,
+                maxReset: maxReset,
                 orderDD: orderDD,
                 updateOrderHelp: updateOrderHelp
             };
