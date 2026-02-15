@@ -39,7 +39,7 @@
         orderT: 0,
 
         frameOffset: 20,
-        sliderSnap10: false,
+        sliderSnap10: true,
 
         // 位置分布モード
         posMode: 0,   // 0:拡散（範囲ランダム）, 1:座標, 2:X/Y/Z, 3:↑→↓←(2D), 4:X→Y→Z(3D)
@@ -796,7 +796,7 @@ function applyPosition(layer, time1, time2, layerIndex) {
         // フレーム
         ui.frameSlider.helpTip = "現在時間からのずらし量（フレーム）。\n正:「動いた後→元の値」/ 負:「元→動いた後」。";
         ui.frameText.helpTip   = "フレームの整数入力。±どちらも可。";
-        if (ui.snapCheck) ui.snapCheck.helpTip = "ON: スライダー値を10刻みでスナップ。OFF: 1刻み。";
+        if (ui.snapCheck) ui.snapCheck.helpTip = "ON: モーション値スライダーを10刻みでスナップ。OFF: 1刻み（フレームは常に1刻み）。";
 
         function setRowHelp(row, name, detail, isPercent) {
             var minHelp = name + " の最小値" + detail;
@@ -871,6 +871,15 @@ function applyPosition(layer, time1, time2, layerIndex) {
         motionGroup.margins = 10;
 
         var orderLabels = ["―", "-+-+", "+-+-"];
+
+        var snapRow = motionGroup.add("group");
+        snapRow.alignment = ["left", "top"];
+        var snapCheck = snapRow.add("checkbox", undefined, "10刻み");
+        snapCheck.value = !!settings.sliderSnap10;
+        snapCheck.onClick = function () {
+            settings.sliderSnap10 = !!snapCheck.value;
+            if (typeof syncSettingsToUI === "function") syncSettingsToUI();
+        };
 
         function createValueRow(parent, label, minKey, maxKey, orderKey, sliderMin, sliderMax) {
             var row = parent.add("group");
@@ -1006,14 +1015,11 @@ function applyPosition(layer, time1, time2, layerIndex) {
         frameSlider.preferredSize.width = 150;
         var frameText = frameGroup.add("edittext", undefined, String(settings.frameOffset || 10));
         frameText.characters = 5;
-        var snapCheck = frameGroup.add("checkbox", undefined, "10刻み");
-        snapCheck.value = !!settings.sliderSnap10;
         var btnSignFlip = frameGroup.add("button", undefined, "+-");
         btnSignFlip.preferredSize.width = 30;
 
         frameSlider.onChanging = function(){
-            settings.frameOffset = normalizeSliderValue(frameSlider.value, -100, 100);
-            frameSlider.value = settings.frameOffset;
+            settings.frameOffset = Math.round(frameSlider.value);
             frameText.text = settings.frameOffset;
         };
         frameText.onChange = function(){
@@ -1026,10 +1032,6 @@ function applyPosition(layer, time1, time2, layerIndex) {
             settings.frameOffset = -v;
             frameText.text = String(settings.frameOffset);
             frameSlider.value = settings.frameOffset;
-        };
-        snapCheck.onClick = function () {
-            settings.sliderSnap10 = !!snapCheck.value;
-            if (typeof syncSettingsToUI === "function") syncSettingsToUI();
         };
 
         // ▼ 位置モードラジオ（分布：3D用を追加）
