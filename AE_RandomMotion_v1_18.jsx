@@ -39,6 +39,7 @@
         orderT: 0,
 
         frameOffset: 20,
+        sliderSnap10: false,
 
         // 位置分布モード
         posMode: 0,   // 0:拡散（範囲ランダム）, 1:座標, 2:X/Y/Z, 3:↑→↓←(2D), 4:X→Y→Z(3D)
@@ -316,6 +317,17 @@
     // ========================================
     function clamp(val, min, max) {
         return Math.max(min, Math.min(max, val));
+    }
+
+    function normalizeSliderValue(rawValue, sliderMin, sliderMax) {
+        var val = clamp(rawValue, sliderMin, sliderMax);
+        if (settings.sliderSnap10) {
+            val = Math.round(val / 10) * 10;
+            val = clamp(val, sliderMin, sliderMax);
+        } else {
+            val = Math.round(val);
+        }
+        return val;
     }
     
     function randomRange(min, max) {
@@ -784,6 +796,7 @@ function applyPosition(layer, time1, time2, layerIndex) {
         // フレーム
         ui.frameSlider.helpTip = "現在時間からのずらし量（フレーム）。\n正:「動いた後→元の値」/ 負:「元→動いた後」。";
         ui.frameText.helpTip   = "フレームの整数入力。±どちらも可。";
+        if (ui.snapCheck) ui.snapCheck.helpTip = "ON: スライダー値を10刻みでスナップ。OFF: 1刻み。";
 
         function setRowHelp(row, name, detail, isPercent) {
             var minHelp = name + " の最小値" + detail;
@@ -903,7 +916,8 @@ function applyPosition(layer, time1, time2, layerIndex) {
             }
 
             minSlider.onChanging = function () {
-                settings[minKey] = Math.round(minSlider.value);
+                settings[minKey] = normalizeSliderValue(minSlider.value, sliderMin, sliderMax);
+                minSlider.value = settings[minKey];
                 minText.text = settings[minKey];
                 updateOrderHelp();
             };
@@ -915,7 +929,8 @@ function applyPosition(layer, time1, time2, layerIndex) {
             };
 
             maxSlider.onChanging = function () {
-                settings[maxKey] = Math.round(maxSlider.value);
+                settings[maxKey] = normalizeSliderValue(maxSlider.value, sliderMin, sliderMax);
+                maxSlider.value = settings[maxKey];
                 maxText.text = settings[maxKey];
                 updateOrderHelp();
             };
@@ -991,11 +1006,14 @@ function applyPosition(layer, time1, time2, layerIndex) {
         frameSlider.preferredSize.width = 150;
         var frameText = frameGroup.add("edittext", undefined, String(settings.frameOffset || 10));
         frameText.characters = 5;
+        var snapCheck = frameGroup.add("checkbox", undefined, "10刻み");
+        snapCheck.value = !!settings.sliderSnap10;
         var btnSignFlip = frameGroup.add("button", undefined, "+-");
         btnSignFlip.preferredSize.width = 30;
 
         frameSlider.onChanging = function(){
-            settings.frameOffset = Math.round(frameSlider.value);
+            settings.frameOffset = normalizeSliderValue(frameSlider.value, -100, 100);
+            frameSlider.value = settings.frameOffset;
             frameText.text = settings.frameOffset;
         };
         frameText.onChange = function(){
@@ -1008,6 +1026,10 @@ function applyPosition(layer, time1, time2, layerIndex) {
             settings.frameOffset = -v;
             frameText.text = String(settings.frameOffset);
             frameSlider.value = settings.frameOffset;
+        };
+        snapCheck.onClick = function () {
+            settings.sliderSnap10 = !!snapCheck.value;
+            if (typeof syncSettingsToUI === "function") syncSettingsToUI();
         };
 
         // ▼ 位置モードラジオ（分布：3D用を追加）
@@ -1085,6 +1107,7 @@ function applyPosition(layer, time1, time2, layerIndex) {
             rbPos:  posRadios,
             frameSlider: frameSlider,
             frameText: frameText,
+            snapCheck: snapCheck,
             btnSignFlip: btnSignFlip,
             btnGotoIn: btnGotoIn,
             btnGotoOut: btnGotoOut,
@@ -1107,6 +1130,7 @@ function applyPosition(layer, time1, time2, layerIndex) {
         linkHover(ui.btnSignFlip,ui.btnSignFlip.helpTip);
         linkHover(ui.frameSlider,ui.frameSlider.helpTip);
         linkHover(ui.frameText,  ui.frameText.helpTip);
+        linkHover(ui.snapCheck,  ui.snapCheck.helpTip);
         function hoverRow(row) {
             if (!row) return;
             if (row.orderDD) linkHover(row.orderDD, row.orderDD.helpTip);
@@ -1161,6 +1185,9 @@ function applyPosition(layer, time1, time2, layerIndex) {
         if (UIREF.frameSlider && UIREF.frameText) {
             UIREF.frameSlider.value = settings.frameOffset;
             UIREF.frameText.text    = String(settings.frameOffset);
+        }
+        if (UIREF.snapCheck) {
+            UIREF.snapCheck.value = !!settings.sliderSnap10;
         }
 
         // 位置モードラジオ（追加分も含めて）
