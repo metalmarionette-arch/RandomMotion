@@ -11,6 +11,8 @@
     var VERSION = "1.0.0";
     var PRESET_FILE = "RandomMotion_Presets.json"
     var UIREF = null; // UIコントロール参照を保持
+    var GLOBAL_UI_KEY = "__RandomMotion_MainPalette__";
+    var GLOBAL_PRESET_UI_KEY = "__RandomMotion_PresetPalette__";
 
     
     // デフォルト値
@@ -457,16 +459,17 @@
         }
         
         app.beginUndoGroup(SCRIPT_NAME + " - Apply");
-        
         try {
-            for (var i = 0; i < layers.length; i++) {
-                applyToLayer(layers[i], comp, i);
+            try {
+                for (var i = 0; i < layers.length; i++) {
+                    applyToLayer(layers[i], comp, i);
+                }
+            } catch(e) {
+                alert("エラー: " + e.toString());
             }
-        } catch(e) {
-            alert("エラー: " + e.toString());
+        } finally {
+            app.endUndoGroup();
         }
-        
-        app.endUndoGroup();
     }
         
     function applyToLayer(layer, comp, layerIndex) {
@@ -856,6 +859,20 @@ function applyPosition(layer, time1, time2, layerIndex) {
     // ========================================
     // ★buildUI を丸ごと置き換え（順番ドロップダウンと横並びレイアウト）
     function buildUI(thisObj) {
+        if (!(thisObj instanceof Panel)) {
+            var globalObj = $.global;
+            var existingWin = globalObj[GLOBAL_UI_KEY];
+            if (existingWin) {
+                try {
+                    existingWin.show();
+                    existingWin.active = true;
+                    return existingWin;
+                } catch (e0) {
+                    globalObj[GLOBAL_UI_KEY] = null;
+                }
+            }
+        }
+
         var win = (thisObj instanceof Panel) ? thisObj : new Window("palette", SCRIPT_NAME, undefined, {resizeable: true});
 
         win.orientation = "column";
@@ -1147,7 +1164,17 @@ function applyPosition(layer, time1, time2, layerIndex) {
         hoverRow(ui.opacityRow);
 
         win.onResizing = win.onResize = function(){ this.layout.resize(); };
-        if (win instanceof Window) { win.center(); win.show(); } else { win.layout.layout(true); }
+        if (win instanceof Window) {
+            $.global[GLOBAL_UI_KEY] = win;
+            win.onClose = function () {
+                if ($.global[GLOBAL_UI_KEY] === win) $.global[GLOBAL_UI_KEY] = null;
+                UIREF = null;
+            };
+            win.center();
+            win.show();
+        } else {
+            win.layout.layout(true);
+        }
 
         return win;
     }
@@ -1225,6 +1252,18 @@ function applyPosition(layer, time1, time2, layerIndex) {
     // プリセットウィンドウ
     // ========================================
     function showPresetWindow(atCursor) {
+        var globalObj = $.global;
+        var existingPreset = globalObj[GLOBAL_PRESET_UI_KEY];
+        if (existingPreset) {
+            try {
+                existingPreset.show();
+                existingPreset.active = true;
+                return;
+            } catch (e0) {
+                globalObj[GLOBAL_PRESET_UI_KEY] = null;
+            }
+        }
+
         var win = new Window("palette", "プリセット", undefined);
         win.orientation = "column";
         win.alignChildren = ["fill", "fill"];
@@ -1319,6 +1358,10 @@ function applyPosition(layer, time1, time2, layerIndex) {
             win.center();
         }
 
+        globalObj[GLOBAL_PRESET_UI_KEY] = win;
+        win.onClose = function () {
+            if ($.global[GLOBAL_PRESET_UI_KEY] === win) $.global[GLOBAL_PRESET_UI_KEY] = null;
+        };
         win.show();
     }
 
