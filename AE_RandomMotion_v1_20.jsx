@@ -9,7 +9,7 @@
     // ========================================
     var SCRIPT_NAME = "RandomMotion";
     var VERSION = "1.0.0";
-    var PRESET_FILE = "AE_RandomMotion_v1_20_CustomPreset.json";
+    var PRESET_FILE = "AE_RandomMotion_CustomPreset.json";
     var UIREF = null; // UIコントロール参照を保持
     var GLOBAL_UI_KEY = "__RandomMotion_MainPalette__";
     var GLOBAL_PRESET_UI_KEY = "__RandomMotion_PresetPalette__";
