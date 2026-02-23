@@ -11,6 +11,8 @@
     var VERSION = "1.0.0";
     var PRESET_FILE = "RandomMotion_Presets.json"
     var UIREF = null; // UIコントロール参照を保持
+    var GLOBAL_UI_KEY = "__RandomMotion_MainPalette__";
+    var GLOBAL_PRESET_UI_KEY = "__RandomMotion_PresetPalette__";
 
     
     // デフォルト値
@@ -39,6 +41,7 @@
         orderT: 0,
 
         frameOffset: 20,
+        sliderSnap10: true,
 
         // 位置分布モード
         posMode: 0,   // 0:拡散（範囲ランダム）, 1:座標, 2:X/Y/Z, 3:↑→↓←(2D), 4:X→Y→Z(3D)
@@ -317,6 +320,17 @@
     function clamp(val, min, max) {
         return Math.max(min, Math.min(max, val));
     }
+
+    function normalizeSliderValue(rawValue, sliderMin, sliderMax) {
+        var val = clamp(rawValue, sliderMin, sliderMax);
+        if (settings.sliderSnap10) {
+            val = Math.round(val / 10) * 10;
+            val = clamp(val, sliderMin, sliderMax);
+        } else {
+            val = Math.round(val);
+        }
+        return val;
+    }
     
     function randomRange(min, max) {
         return min + Math.random() * (max - min);
@@ -445,16 +459,17 @@
         }
         
         app.beginUndoGroup(SCRIPT_NAME + " - Apply");
-        
         try {
-            for (var i = 0; i < layers.length; i++) {
-                applyToLayer(layers[i], comp, i);
+            try {
+                for (var i = 0; i < layers.length; i++) {
+                    applyToLayer(layers[i], comp, i);
+                }
+            } catch(e) {
+                alert("エラー: " + e.toString());
             }
-        } catch(e) {
-            alert("エラー: " + e.toString());
+        } finally {
+            app.endUndoGroup();
         }
-        
-        app.endUndoGroup();
     }
         
     function applyToLayer(layer, comp, layerIndex) {
@@ -784,6 +799,7 @@ function applyPosition(layer, time1, time2, layerIndex) {
         // フレーム
         ui.frameSlider.helpTip = "現在時間からのずらし量（フレーム）。\n正:「動いた後→元の値」/ 負:「元→動いた後」。";
         ui.frameText.helpTip   = "フレームの整数入力。±どちらも可。";
+        if (ui.snapCheck) ui.snapCheck.helpTip = "ON: モーション値スライダーを10刻みでスナップ。OFF: 1刻み（フレームは常に1刻み）。";
 
         function setRowHelp(row, name, detail, isPercent) {
             var minHelp = name + " の最小値" + detail;
@@ -843,6 +859,20 @@ function applyPosition(layer, time1, time2, layerIndex) {
     // ========================================
     // ★buildUI を丸ごと置き換え（順番ドロップダウンと横並びレイアウト）
     function buildUI(thisObj) {
+        if (!(thisObj instanceof Panel)) {
+            var globalObj = $.global;
+            var existingWin = globalObj[GLOBAL_UI_KEY];
+            if (existingWin) {
+                try {
+                    existingWin.show();
+                    existingWin.active = true;
+                    return existingWin;
+                } catch (e0) {
+                    globalObj[GLOBAL_UI_KEY] = null;
+                }
+            }
+        }
+
         var win = (thisObj instanceof Panel) ? thisObj : new Window("palette", SCRIPT_NAME, undefined, {resizeable: true});
 
         win.orientation = "column";
@@ -858,6 +888,15 @@ function applyPosition(layer, time1, time2, layerIndex) {
         motionGroup.margins = 10;
 
         var orderLabels = ["―", "-+-+", "+-+-"];
+
+        var snapRow = motionGroup.add("group");
+        snapRow.alignment = ["left", "top"];
+        var snapCheck = snapRow.add("checkbox", undefined, "10刻み");
+        snapCheck.value = !!settings.sliderSnap10;
+        snapCheck.onClick = function () {
+            settings.sliderSnap10 = !!snapCheck.value;
+            if (typeof syncSettingsToUI === "function") syncSettingsToUI();
+        };
 
         function createValueRow(parent, label, minKey, maxKey, orderKey, sliderMin, sliderMax) {
             var row = parent.add("group");
@@ -903,7 +942,8 @@ function applyPosition(layer, time1, time2, layerIndex) {
             }
 
             minSlider.onChanging = function () {
-                settings[minKey] = Math.round(minSlider.value);
+                settings[minKey] = normalizeSliderValue(minSlider.value, sliderMin, sliderMax);
+                minSlider.value = settings[minKey];
                 minText.text = settings[minKey];
                 updateOrderHelp();
             };
@@ -915,7 +955,8 @@ function applyPosition(layer, time1, time2, layerIndex) {
             };
 
             maxSlider.onChanging = function () {
-                settings[maxKey] = Math.round(maxSlider.value);
+                settings[maxKey] = normalizeSliderValue(maxSlider.value, sliderMin, sliderMax);
+                maxSlider.value = settings[maxKey];
                 maxText.text = settings[maxKey];
                 updateOrderHelp();
             };
@@ -1085,6 +1126,7 @@ function applyPosition(layer, time1, time2, layerIndex) {
             rbPos:  posRadios,
             frameSlider: frameSlider,
             frameText: frameText,
+            snapCheck: snapCheck,
             btnSignFlip: btnSignFlip,
             btnGotoIn: btnGotoIn,
             btnGotoOut: btnGotoOut,
@@ -1107,6 +1149,7 @@ function applyPosition(layer, time1, time2, layerIndex) {
         linkHover(ui.btnSignFlip,ui.btnSignFlip.helpTip);
         linkHover(ui.frameSlider,ui.frameSlider.helpTip);
         linkHover(ui.frameText,  ui.frameText.helpTip);
+        linkHover(ui.snapCheck,  ui.snapCheck.helpTip);
         function hoverRow(row) {
             if (!row) return;
             if (row.orderDD) linkHover(row.orderDD, row.orderDD.helpTip);
@@ -1121,7 +1164,17 @@ function applyPosition(layer, time1, time2, layerIndex) {
         hoverRow(ui.opacityRow);
 
         win.onResizing = win.onResize = function(){ this.layout.resize(); };
-        if (win instanceof Window) { win.center(); win.show(); } else { win.layout.layout(true); }
+        if (win instanceof Window) {
+            $.global[GLOBAL_UI_KEY] = win;
+            win.onClose = function () {
+                if ($.global[GLOBAL_UI_KEY] === win) $.global[GLOBAL_UI_KEY] = null;
+                UIREF = null;
+            };
+            win.center();
+            win.show();
+        } else {
+            win.layout.layout(true);
+        }
 
         return win;
     }
@@ -1162,6 +1215,9 @@ function applyPosition(layer, time1, time2, layerIndex) {
             UIREF.frameSlider.value = settings.frameOffset;
             UIREF.frameText.text    = String(settings.frameOffset);
         }
+        if (UIREF.snapCheck) {
+            UIREF.snapCheck.value = !!settings.sliderSnap10;
+        }
 
         // 位置モードラジオ（追加分も含めて）
         if (UIREF.rbPos && UIREF.rbPos.length) {
@@ -1196,6 +1252,18 @@ function applyPosition(layer, time1, time2, layerIndex) {
     // プリセットウィンドウ
     // ========================================
     function showPresetWindow(atCursor) {
+        var globalObj = $.global;
+        var existingPreset = globalObj[GLOBAL_PRESET_UI_KEY];
+        if (existingPreset) {
+            try {
+                existingPreset.show();
+                existingPreset.active = true;
+                return;
+            } catch (e0) {
+                globalObj[GLOBAL_PRESET_UI_KEY] = null;
+            }
+        }
+
         var win = new Window("palette", "プリセット", undefined);
         win.orientation = "column";
         win.alignChildren = ["fill", "fill"];
@@ -1290,6 +1358,10 @@ function applyPosition(layer, time1, time2, layerIndex) {
             win.center();
         }
 
+        globalObj[GLOBAL_PRESET_UI_KEY] = win;
+        win.onClose = function () {
+            if ($.global[GLOBAL_PRESET_UI_KEY] === win) $.global[GLOBAL_PRESET_UI_KEY] = null;
+        };
         win.show();
     }
 
