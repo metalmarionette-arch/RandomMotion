@@ -44,7 +44,12 @@
         posMode: 0,   // 0:拡散（範囲ランダム）, 1:座標, 2:X/Y/Z, 3:↑→↓←(2D), 4:X→Y→Z(3D)
 
         autoStartIn: false,
-        autoStartOut: false
+        autoStartOut: false,
+
+        continuousKeys: false,
+        continuousRate: 10,
+        decayEnabled: false,
+        decayType: 0 // 0:リニア
     };
 
     var settings = {};
@@ -321,6 +326,65 @@
     function randomRange(min, max) {
         return min + Math.random() * (max - min);
     }
+
+    function getContinuousTimes(time1, time2, frequency) {
+        var freq = clamp(Math.round(frequency || 1), 1, 30);
+        var step = 1 / freq;
+        var start = Math.min(time1, time2);
+        var end = Math.max(time1, time2);
+        var times = [];
+
+        if (start === end) {
+            times.push(start);
+            return times;
+        }
+
+        var t = start;
+        while (t < end) {
+            times.push(t);
+            t += step;
+        }
+        times.push(end);
+        return times;
+    }
+
+    function getDecayProgress(time1, time2, time) {
+        var total = Math.abs(time2 - time1);
+        if (total === 0) return 1;
+        if (time2 >= time1) {
+            return clamp((time - time1) / total, 0, 1);
+        }
+        return clamp((time1 - time) / total, 0, 1);
+    }
+
+    function applyDecayEase(t, decayType) {
+        switch (decayType | 0) {
+            case 1: // Sine
+                return 1 - Math.cos((t * Math.PI) / 2);
+            case 2: // Quad
+                return t * t;
+            case 3: // Cubic
+                return t * t * t;
+            case 4: // Quart
+                return t * t * t * t;
+            case 5: // Quint
+                return t * t * t * t * t;
+            case 6: // Expo
+                return (t === 0) ? 0 : Math.pow(2, 10 * (t - 1));
+            case 7: // Circ
+                return 1 - Math.sqrt(1 - (t * t));
+            case 8: // jump
+                return (t < 1) ? 0 : 1;
+            default: // Linear
+                return t;
+        }
+    }
+
+    function getDecayFactor(time1, time2, time, decayType) {
+        var progress = getDecayProgress(time1, time2, time);
+        var eased = applyDecayEase(progress, decayType);
+        return 1 - eased;
+    }
     
     function validateMinMax() {
         // min と max が逆になっていたら自動で入れ替える（数値化もここで保証）
@@ -461,12 +525,17 @@
         var currentTime   = comp.time;
         var frameOffset   = settings.frameOffset;
         var frameDuration = comp.frameDuration;
+        var useContinuous = !!settings.continuousKeys;
 
         // 始点時間の決定
         var startTime;
         if (settings.autoStartIn && settings.autoStartOut) {
             // 両方ON: イン点とアウト点に2キーを固定（既存仕様のまま）
-            applyTwoKeys(layer, layer.inPoint, layer.outPoint, layerIndex);
+            if (useContinuous) {
+                applyContinuousKeys(layer, layer.inPoint, layer.outPoint, layerIndex);
+            } else {
+                applyTwoKeys(layer, layer.inPoint, layer.outPoint, layerIndex);
+            }
             return;
         } else if (settings.autoStartIn) {
             startTime = layer.inPoint;
@@ -491,11 +560,15 @@
         var time1 = startTime + offsetTime; // ランダム適用後
         var time2 = startTime;              // 元の値
 
-        // 各プロパティに適用（既存関数は time1=適用／time2=元 を前提に実装済み）
-        applyPosition(layer, time1, time2, layerIndex);
-        applyRotation(layer, time1, time2, layerIndex);
-        applyScale(layer, time1, time2, layerIndex);
-        applyOpacity(layer, time1, time2, layerIndex);
+        if (useContinuous) {
+            applyContinuousKeys(layer, time1, time2, layerIndex);
+        } else {
+            // 各プロパティに適用（既存関数は time1=適用／time2=元 を前提に実装済み）
+            applyPosition(layer, time1, time2, layerIndex);
+            applyRotation(layer, time1, time2, layerIndex);
+            applyScale(layer, time1, time2, layerIndex);
+            applyOpacity(layer, time1, time2, layerIndex);
+        }
     }
 
     
@@ -505,6 +578,18 @@
         applyRotation(layer, time1, time2, layerIndex);
         applyScale(layer, time1, time2, layerIndex);
         applyOpacity(layer, time1, time2, layerIndex);
+    }
+
+    function applyContinuousKeys(layer, time1, time2, layerIndex) {
+        var rate = clamp(settings.continuousRate || 1, 1, 30);
+        var times = getContinuousTimes(time1, time2, rate);
+        var decayOn = !!settings.decayEnabled;
+        var decayType = settings.decayType | 0;
+
+        applyPositionContinuous(layer, time1, time2, layerIndex, times, decayOn, decayType);
+        applyRotationContinuous(layer, time1, time2, layerIndex, times, decayOn, decayType);
+        applyScaleContinuous(layer, time1, time2, layerIndex, times, decayOn, decayType);
+        applyOpacityContinuous(layer, time1, time2, layerIndex, times, decayOn, decayType);
     }
         
 function applyPosition(layer, time1, time2, layerIndex) {
@@ -564,6 +649,64 @@ function applyPosition(layer, time1, time2, layerIndex) {
     }
 }
 
+    function applyPositionContinuous(layer, time1, time2, layerIndex, times, decayOn, decayType) {
+        if (settings.xMin === 0 && settings.xMax === 0 &&
+            settings.yMin === 0 && settings.yMax === 0 &&
+            settings.zMin === 0 && settings.zMax === 0) return;
+
+        var tr = layer.property("ADBE Transform Group");
+        var pos = tr.property("ADBE Position");
+        var is3DLayer = !!layer.threeDLayer;
+        var isSeparate = pos.dimensionsSeparated;
+        var time2Key = time2;
+
+        function getFactor(time) {
+            return decayOn ? getDecayFactor(time1, time2, time, decayType) : 1;
+        }
+
+        if (isSeparate) {
+            var xProp = tr.property("ADBE Position_0");
+            var yProp = tr.property("ADBE Position_1");
+            var zProp = is3DLayer ? tr.property("ADBE Position_2") : null;
+
+            var originalX = xProp.valueAtTime(time2Key, false);
+            var originalY = yProp.valueAtTime(time2Key, false);
+            var originalZ = (zProp) ? zProp.valueAtTime(time2Key, false) : 0;
+
+            for (var i = 0; i < times.length; i++) {
+                var t = times[i];
+                if (Math.abs(t - time2Key) < 0.000001) continue;
+                var factor = getFactor(t);
+                var deltas = calculatePositionDelta(layerIndex + i, is3DLayer);
+                xProp.setValueAtTime(t, originalX + deltas.x * factor);
+                yProp.setValueAtTime(t, originalY + deltas.y * factor);
+                if (zProp) zProp.setValueAtTime(t, originalZ + deltas.z * factor);
+            }
+
+            xProp.setValueAtTime(time2Key, originalX);
+            yProp.setValueAtTime(time2Key, originalY);
+            if (zProp) zProp.setValueAtTime(time2Key, originalZ);
+        } else {
+            var original = pos.valueAtTime(time2Key, false);
+            var hasZ = is3DLayer && (original instanceof Array) && (original.length >= 3);
+
+            for (var j = 0; j < times.length; j++) {
+                var t2 = times[j];
+                if (Math.abs(t2 - time2Key) < 0.000001) continue;
+                var factor2 = getFactor(t2);
+                var deltas2 = calculatePositionDelta(layerIndex + j, is3DLayer);
+                var newVal;
+                if (hasZ) {
+                    newVal = [original[0] + deltas2.x * factor2, original[1] + deltas2.y * factor2, original[2] + deltas2.z * factor2];
+                } else {
+                    newVal = [original[0] + deltas2.x * factor2, original[1] + deltas2.y * factor2];
+                }
+                pos.setValueAtTime(t2, newVal);
+            }
+            pos.setValueAtTime(time2Key, original);
+        }
+    }
+
     function applyRotation(layer, time1, time2, layerIndex) {
         var tr = layer.property("ADBE Transform Group");
         var is3DLayer = !!layer.threeDLayer;
@@ -605,6 +748,56 @@ function applyPosition(layer, time1, time2, layerIndex) {
         }
     }
 
+    function applyRotationContinuous(layer, time1, time2, layerIndex, times, decayOn, decayType) {
+        var tr = layer.property("ADBE Transform Group");
+        var is3DLayer = !!layer.threeDLayer;
+
+        if (settings.rXMin === 0 && settings.rXMax === 0 &&
+            settings.rYMin === 0 && settings.rYMax === 0 &&
+            settings.rZMin === 0 && settings.rZMax === 0) return;
+
+        var rotZ = tr.property("ADBE Rotate Z");
+        var rotX = is3DLayer ? tr.property("ADBE Rotate X") : null;
+        var rotY = is3DLayer ? tr.property("ADBE Rotate Y") : null;
+        if (!rotZ) return;
+
+        function getFactor(time) {
+            return decayOn ? getDecayFactor(time1, time2, time, decayType) : 1;
+        }
+
+        if (rotX && rotY) {
+            var origX = rotX.valueAtTime(time2, false);
+            var origY = rotY.valueAtTime(time2, false);
+            var origZ = rotZ.valueAtTime(time2, false);
+
+            for (var i = 0; i < times.length; i++) {
+                var t = times[i];
+                if (Math.abs(t - time2) < 0.000001) continue;
+                var factor = getFactor(t);
+                var deltaRX = sampleValueWithOrder(settings.rXMin, settings.rXMax, settings.orderRX, layerIndex + i) * factor;
+                var deltaRY = sampleValueWithOrder(settings.rYMin, settings.rYMax, settings.orderRY, layerIndex + i) * factor;
+                var deltaRZ = sampleValueWithOrder(settings.rZMin, settings.rZMax, settings.orderRZ, layerIndex + i) * factor;
+                rotX.setValueAtTime(t, origX + deltaRX);
+                rotY.setValueAtTime(t, origY + deltaRY);
+                rotZ.setValueAtTime(t, origZ + deltaRZ);
+            }
+
+            rotX.setValueAtTime(time2, origX);
+            rotY.setValueAtTime(time2, origY);
+            rotZ.setValueAtTime(time2, origZ);
+        } else {
+            var orig2D = rotZ.valueAtTime(time2, false);
+            for (var j = 0; j < times.length; j++) {
+                var t2 = times[j];
+                if (Math.abs(t2 - time2) < 0.000001) continue;
+                var factor2 = getFactor(t2);
+                var delta2D = sampleValueWithOrder(settings.rZMin, settings.rZMax, settings.orderRZ, layerIndex + j) * factor2;
+                rotZ.setValueAtTime(t2, orig2D + delta2D);
+            }
+            rotZ.setValueAtTime(time2, orig2D);
+        }
+    }
+
     // 拡縮は分布モードに準拠（S-Mode廃止）
     function applyScale(layer, time1, time2, layerIndex) {
         if (settings.sXMin === 0 && settings.sXMax === 0 &&
@@ -637,6 +830,45 @@ function applyPosition(layer, time1, time2, layerIndex) {
         scale.setValueAtTime(time2, original);
     }
 
+    function applyScaleContinuous(layer, time1, time2, layerIndex, times, decayOn, decayType) {
+        if (settings.sXMin === 0 && settings.sXMax === 0 &&
+            settings.sYMin === 0 && settings.sYMax === 0 &&
+            settings.sZMin === 0 && settings.sZMax === 0) return;
+
+        var scale = layer.property("ADBE Transform Group").property("ADBE Scale");
+        var original = scale.valueAtTime(time2, false);
+        var hasZ = (original instanceof Array) && (original.length >= 3);
+
+        function getFactor(time) {
+            return decayOn ? getDecayFactor(time1, time2, time, decayType) : 1;
+        }
+
+        for (var i = 0; i < times.length; i++) {
+            var t = times[i];
+            if (Math.abs(t - time2) < 0.000001) continue;
+            var factor = getFactor(t);
+            var deltas = calculateScaleDelta(layerIndex + i, hasZ);
+
+            var newX = original[0] + deltas.x * factor;
+            var newY = original[1] + deltas.y * factor;
+            var newZ = hasZ ? original[2] + deltas.z * factor : 0;
+
+            if ((original[0] > 0 && newX < 0) || (original[0] < 0 && newX > 0)) newX = 0;
+            if ((original[1] > 0 && newY < 0) || (original[1] < 0 && newY > 0)) newY = 0;
+            if (hasZ) {
+                if ((original[2] > 0 && newZ < 0) || (original[2] < 0 && newZ > 0)) newZ = 0;
+            }
+
+            if (hasZ) {
+                scale.setValueAtTime(t, [newX, newY, newZ]);
+            } else {
+                scale.setValueAtTime(t, [newX, newY]);
+            }
+        }
+
+        scale.setValueAtTime(time2, original);
+    }
+
     function applyOpacity(layer, time1, time2, layerIndex) {
         if (settings.tMin === 0 && settings.tMax === 0) return;
 
@@ -653,6 +885,34 @@ function applyPosition(layer, time1, time2, layerIndex) {
 
         var newValue = clamp(original - delta, 0, 100);
         opacity.setValueAtTime(time1, newValue);
+        opacity.setValueAtTime(time2, original);
+    }
+
+    function applyOpacityContinuous(layer, time1, time2, layerIndex, times, decayOn, decayType) {
+        if (settings.tMin === 0 && settings.tMax === 0) return;
+
+        var opacity = layer.property("ADBE Transform Group").property("ADBE Opacity");
+        var original = opacity.valueAtTime(time2, false);
+        var mode = (settings.posMode | 0);
+
+        function getFactor(time) {
+            return decayOn ? getDecayFactor(time1, time2, time, decayType) : 1;
+        }
+
+        for (var i = 0; i < times.length; i++) {
+            var t = times[i];
+            if (Math.abs(t - time2) < 0.000001) continue;
+            var factor = getFactor(t);
+            var delta;
+            if (mode === 1) {
+                delta = pickExtremeWithOrder(settings.tMin, settings.tMax, settings.orderT, layerIndex + i);
+            } else {
+                delta = sampleValueWithOrder(settings.tMin, settings.tMax, settings.orderT, layerIndex + i);
+            }
+            var newValue = clamp(original - (delta * factor), 0, 100);
+            opacity.setValueAtTime(t, newValue);
+        }
+
         opacity.setValueAtTime(time2, original);
     }
 
@@ -784,6 +1044,11 @@ function applyPosition(layer, time1, time2, layerIndex) {
         // フレーム
         ui.frameSlider.helpTip = "現在時間からのずらし量（フレーム）。\n正:「動いた後→元の値」/ 負:「元→動いた後」。";
         ui.frameText.helpTip   = "フレームの整数入力。±どちらも可。";
+        ui.continuousCheck.helpTip = "指定区間に連続でランダムキーを打つかを切り替えます。";
+        ui.freqSlider.helpTip = "1秒あたりのキー打ち回数（1～30）。";
+        ui.freqText.helpTip = "頻度の数値入力（1～30）。";
+        ui.decayCheck.helpTip = "連続キーの減衰を有効化します。";
+        ui.decayDropdown.helpTip = "減衰の種類を選択します。";
 
         function setRowHelp(row, name, detail, isPercent) {
             var minHelp = name + " の最小値" + detail;
@@ -994,6 +1259,21 @@ function applyPosition(layer, time1, time2, layerIndex) {
         var btnSignFlip = frameGroup.add("button", undefined, "+-");
         btnSignFlip.preferredSize.width = 30;
 
+        var continuousCheck = frameGroup.add("checkbox", undefined, "連続キー");
+        continuousCheck.value = !!settings.continuousKeys;
+
+        frameGroup.add("statictext", undefined, "頻度:");
+        var freqSlider = frameGroup.add("slider", undefined, settings.continuousRate || 10, 1, 30);
+        freqSlider.preferredSize.width = 120;
+        var freqText = frameGroup.add("edittext", undefined, String(settings.continuousRate || 10));
+        freqText.characters = 3;
+
+        var decayCheck = frameGroup.add("checkbox", undefined, "減衰");
+        decayCheck.value = !!settings.decayEnabled;
+        var decayOptions = ["リニア", "Sine", "Quad", "Cubic", "Quart", "Quint", "Expo", "Circ", "jump"];
+        var decayDropdown = frameGroup.add("dropdownlist", undefined, decayOptions);
+        decayDropdown.selection = decayDropdown.items[Math.min(Math.max(settings.decayType | 0, 0), decayOptions.length - 1)];
+
         frameSlider.onChanging = function(){
             settings.frameOffset = Math.round(frameSlider.value);
             frameText.text = settings.frameOffset;
@@ -1009,6 +1289,43 @@ function applyPosition(layer, time1, time2, layerIndex) {
             frameText.text = String(settings.frameOffset);
             frameSlider.value = settings.frameOffset;
         };
+
+        function updateContinuousUIState() {
+            var enabled = !!settings.continuousKeys;
+            freqSlider.enabled = enabled;
+            freqText.enabled = enabled;
+            decayCheck.enabled = enabled;
+            decayDropdown.enabled = enabled && !!settings.decayEnabled;
+        }
+
+        continuousCheck.onClick = function () {
+            settings.continuousKeys = !!continuousCheck.value;
+            updateContinuousUIState();
+        };
+
+        freqSlider.onChanging = function () {
+            settings.continuousRate = Math.round(freqSlider.value);
+            freqText.text = settings.continuousRate;
+        };
+
+        freqText.onChange = function () {
+            var val = parseInt(freqText.text, 10);
+            if (!isFinite(val)) val = settings.continuousRate || 1;
+            settings.continuousRate = clamp(val, 1, 30);
+            freqText.text = String(settings.continuousRate);
+            freqSlider.value = settings.continuousRate;
+        };
+
+        decayCheck.onClick = function () {
+            settings.decayEnabled = !!decayCheck.value;
+            updateContinuousUIState();
+        };
+
+        decayDropdown.onChange = function () {
+            settings.decayType = decayDropdown.selection ? decayDropdown.selection.index : 0;
+        };
+
+        updateContinuousUIState();
 
         // ▼ 位置モードラジオ（分布：3D用を追加）
         var posGroup = motionGroup.add("group");
@@ -1086,6 +1403,11 @@ function applyPosition(layer, time1, time2, layerIndex) {
             frameSlider: frameSlider,
             frameText: frameText,
             btnSignFlip: btnSignFlip,
+            continuousCheck: continuousCheck,
+            freqSlider: freqSlider,
+            freqText: freqText,
+            decayCheck: decayCheck,
+            decayDropdown: decayDropdown,
             btnGotoIn: btnGotoIn,
             btnGotoOut: btnGotoOut,
             btnPreset: btnPreset,
@@ -1107,6 +1429,11 @@ function applyPosition(layer, time1, time2, layerIndex) {
         linkHover(ui.btnSignFlip,ui.btnSignFlip.helpTip);
         linkHover(ui.frameSlider,ui.frameSlider.helpTip);
         linkHover(ui.frameText,  ui.frameText.helpTip);
+        linkHover(ui.continuousCheck, ui.continuousCheck.helpTip);
+        linkHover(ui.freqSlider, ui.freqSlider.helpTip);
+        linkHover(ui.freqText, ui.freqText.helpTip);
+        linkHover(ui.decayCheck, ui.decayCheck.helpTip);
+        linkHover(ui.decayDropdown, ui.decayDropdown.helpTip);
         function hoverRow(row) {
             if (!row) return;
             if (row.orderDD) linkHover(row.orderDD, row.orderDD.helpTip);
@@ -1161,6 +1488,25 @@ function applyPosition(layer, time1, time2, layerIndex) {
         if (UIREF.frameSlider && UIREF.frameText) {
             UIREF.frameSlider.value = settings.frameOffset;
             UIREF.frameText.text    = String(settings.frameOffset);
+        }
+
+        if (UIREF.continuousCheck) UIREF.continuousCheck.value = !!settings.continuousKeys;
+        if (UIREF.freqSlider && UIREF.freqText) {
+            UIREF.freqSlider.value = clamp(settings.continuousRate || 1, 1, 30);
+            UIREF.freqText.text = String(clamp(settings.continuousRate || 1, 1, 30));
+        }
+        if (UIREF.decayCheck) UIREF.decayCheck.value = !!settings.decayEnabled;
+        if (UIREF.decayDropdown && UIREF.decayDropdown.items) {
+            var dIdx = settings.decayType | 0;
+            if (dIdx < 0 || dIdx >= UIREF.decayDropdown.items.length) dIdx = 0;
+            UIREF.decayDropdown.selection = UIREF.decayDropdown.items[dIdx];
+        }
+        if (UIREF.freqSlider && UIREF.freqText && UIREF.decayCheck && UIREF.decayDropdown) {
+            var enabled = !!settings.continuousKeys;
+            UIREF.freqSlider.enabled = enabled;
+            UIREF.freqText.enabled = enabled;
+            UIREF.decayCheck.enabled = enabled;
+            UIREF.decayDropdown.enabled = enabled && !!settings.decayEnabled;
         }
 
         // 位置モードラジオ（追加分も含めて）
