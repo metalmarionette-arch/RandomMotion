@@ -9,7 +9,7 @@
     // ========================================
     var SCRIPT_NAME = "RandomMotion";
     var VERSION = "1.0.0";
-    var PRESET_FILE = "RandomMotion_Presets.json"
+    var PRESET_FILE = "AE_RandomMotion_v1_20_CustomPreset.json";
     var UIREF = null; // UIコントロール参照を保持
     var GLOBAL_UI_KEY = "__RandomMotion_MainPalette__";
     var GLOBAL_PRESET_UI_KEY = "__RandomMotion_PresetPalette__";
@@ -121,27 +121,16 @@
     // ========================================
     // プリセット管理
     // ========================================
-    // Folder.userData は Folderオブジェクトなので文字列化して使う
+    function getPresetFolderPath() {
+        var docsPath = (Folder.myDocuments && Folder.myDocuments.fsName)
+            ? Folder.myDocuments.fsName
+            : Folder.myDocuments.fullName;
+        return docsPath + "/Adobe/After Effects/AE_SUGI_ScriptLancher_CustomPresets";
+    }
+
+    // Folder はオブジェクトなので文字列化して使う
     function getPresetFilePath() {
-        // 1) 実行中スクリプトと同じフォルダを最優先
-        try {
-            var scriptFile = new File($.fileName); // 実行中の .jsx / .jsxbin
-            if (scriptFile && scriptFile.parent && scriptFile.parent.exists) {
-                var scriptDir = scriptFile.parent.fullName;
-                return scriptDir + "/" + PRESET_FILE; // 例: AE_RandomMotion_v1_04.jsx と同じ場所
-            }
-        } catch (e) {
-            // 無視してフォールバックへ
-        }
-
-        // 2) フォールバック: 従来の userData パス
-        var basePath = (Folder.userData && Folder.userData.fsName)
-            ? Folder.userData.fsName
-            : Folder.userData.fullName;
-
-        var targetPath = basePath + "/Adobe/After Effects/RandomMotion";
-
-        // 必要な中間ディレクトリも作成
+        var targetPath = getPresetFolderPath();
         var folder = new Folder(targetPath);
         if (!folder.exists) {
             var parts = targetPath.split("/");
@@ -156,34 +145,13 @@
     }
 
     function loadPresets() {
-        // 候補: スクリプトと同じ場所 → userData の順で探す
-        var candidates = [];
-
-        // スクリプト隣
-        try {
-            var scriptFile = new File($.fileName);
-            if (scriptFile && scriptFile.parent && scriptFile.parent.exists) {
-                candidates.push(scriptFile.parent.fullName + "/" + PRESET_FILE);
-            }
-        } catch (e) {}
-
-        // userData 側
-        var basePath = (Folder.userData && Folder.userData.fsName)
-            ? Folder.userData.fsName
-            : Folder.userData.fullName;
-        var targetPath = basePath + "/Adobe/After Effects/RandomMotion";
-        candidates.push(targetPath + "/" + PRESET_FILE);
-
-        for (var i = 0; i < candidates.length; i++) {
-            var f = new File(candidates[i]);
-            if (f.exists) {
-                if (f.open("r")) {
-                    var content = f.read();
-                    f.close();
-                    presets = _jsonParse(content) || [];
-                    return;
-                }
-            }
+        var presetPath = getPresetFilePath();
+        var f = new File(presetPath);
+        if (f.exists && f.open("r")) {
+            var content = f.read();
+            f.close();
+            presets = _jsonParse(content) || [];
+            return;
         }
         presets = []; // 見つからない場合
     }
@@ -194,36 +162,10 @@
         var text = _jsonStringify(presets);
         if (typeof text !== "string" || text === "") text = "[]";
 
-        // 優先：スクリプトと同じ場所
-        var primaryPath = getPresetFilePath(); // 既存（スクリプト横→無理なら userData を返すでもOK）
-        var tried = [];
-        if (primaryPath) {
-            tried.push(primaryPath);
-            try {
-                var pf = new File(primaryPath);
-                var pdir = pf.parent; if (!pdir.exists) pdir.create();
-                if (pf.open("w")) {
-                    pf.encoding = "UTF-8";
-                    pf.lineFeed = "Unix";
-                    pf.write(text);
-                    pf.close();
-                    return;
-                }
-            } catch (e) {}
-        }
-
-        // フォールバック：userData 側
-        var basePath = (Folder.userData && Folder.userData.fsName) ? Folder.userData.fsName : Folder.userData.fullName;
-        var targetDir = basePath + "/Adobe/After Effects/RandomMotion";
-        var folder = new Folder(targetDir);
-        if (!folder.exists) {
-            var parts = targetDir.split("/"); var acc = parts[0];
-            for (var i=1;i<parts.length;i++){ acc+="/"+parts[i]; var d=new Folder(acc); if(!d.exists) d.create(); }
-        }
-        var fallbackPath = folder.fullName + "/" + PRESET_FILE;
-        tried.push(fallbackPath);
+        var presetPath = getPresetFilePath();
+        var tried = [presetPath];
         try {
-            var ff = new File(fallbackPath);
+            var ff = new File(presetPath);
             if (ff.open("w")) {
                 ff.encoding = "UTF-8";
                 ff.lineFeed = "Unix";
